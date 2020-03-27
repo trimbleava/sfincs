@@ -456,11 +456,12 @@ def main():
 
     plt_title = plt_subtitle = None
     
+
     # Note: we can not use ncfile station names to extract data from NOAA due to station_ids requirement for extraction.
     # stations with same attributes in NOAA database - these stations all have same datum (NVAD)
-    station_ids = (8534720, 8536110, 8570283, 8557380, 8545240)
-    station_names = ["Atlantic City","Cape May, NJ","Ocean City Inlet, MD", "Lewes, DE", "Philadelphia, PA"]
-    station_locs = [(m,n),(717,464),((m,n),(572,258),(m,n)]
+    station_ids = (8536110, 8557380, 8537121, 8551910, 8555889)
+    station_names = ["Cape May, NJ", "Lewes, DE", "Ship John Shoal, NJ","Reedy Point, DE","Brandywine Shoal Light, DE"]
+    station_locs = [(717,464), (572,258), (340,838), (160,1120), (578,485)]
 
     data_dict = {}  # holds processed data for all modes, if we need to plot them in one figure
     outfile_dict = {}
