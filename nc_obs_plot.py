@@ -8,28 +8,30 @@ Python Version: 3.7
 """
 
 import sys, os, logging, logging.config
-#import re, ntpath
-#import time, math
 import urllib.request
 from datetime import datetime, timedelta
 from optparse import OptionParser
 
 import numpy as np
-#import numpy.ma as ma
 import pandas as pd
 from netCDF4 import Dataset, num2date, date2index 
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
-#from scipy.interpolate import UnivariateSpline
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
+from matplotlib.ticker import (MultipleLocator, FormatStrFormatter,
+                               AutoMinorLocator)
 
 # local import
-import utils
-#from plot_data import plot_multi_yyymmddhm_with_stat, plot_scatter_shell
 
 log_file = "nc_obs_plot.log"
 logger = logging.getLogger(__name__)
+
+# Turn interactive plotting off
+plt.ioff()
 
 
 # To run: python nc_obs_plot.py -m sfincs -n sandy -s "20121025,20121104" -f sfincs_map.nc -v zs -o outdir
@@ -38,7 +40,7 @@ def handle_command_line():
 
     usage = '\n%s --model_name <sfincs|dflow> (optional) ' \
                   '--hurricane_name <isabel|sandy|irene> (optional) '\
-                  '--storm_time_range <"20030910,20030924"> (optional) ' \
+                  '--storm_time_range <"20121025,20121104"> (optional) ' \
                   '--file.nc <netcdf file name> ' \
                   '--ncvar <netcdf variable to plot> (optional) ' \
                   '--out_dir <output directory> (optional)' % sys.argv[0]
@@ -327,31 +329,21 @@ def tsplot(hurricane_name, station_data, plot_file_name, plt_title, plt_subtitle
 
         plt_subtitle += " - Station " + sta.title()
 
-        # Turn interactive plotting off
-        plt.ioff()
-
-        from matplotlib.backends.backend_pdf import PdfPages
-        import matplotlib.dates as mdates
-
         # column names 
-
         cols = [df.columns[0],df.columns[1]]
         
         with PdfPages(plot_name) as pdf:
       
             fig, ax = plt.subplots(figsize=(20, 10))
-            ax = df[cols[0]].plot( marker='.', markersize=0, linestyle='-', linewidth=0.5, color="C3", label='Observed')
-            df[cols[1]].plot(ax=ax, marker='o', markersize=1, linestyle='-', linewidth=0.5, color="C2", label='Predicted')
+            ax = df[cols[0]].plot(x='Date Time', y=' Water Level', marker='.', markersize=0, linestyle='-', linewidth=0.5, color="C3", label='Observed')
+            df[cols[1]].plot(ax=ax, x='Date Time', y='zs',marker='o', markersize=1, linestyle='-', linewidth=0.5, color="C2", label='Predicted')
 
             ax.legend()
             ax.set_title(plt_title)
             ax.set_ylabel(ylabel)
             ax.set_xlabel('Date')
-            #ax.set_ylim(0, 0.3)
-            
+
             pdf.savefig()
-            plt.xticks(rotation=0)
-            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d'))
             plt.close()
 
 
@@ -379,13 +371,13 @@ def process_data(station_ids, station_names, station_locs, mode, start_date_idx,
     #df = pd.DataFrame(date_time, columns=['Datetime'])
     
     for j, sid in enumerate(station_ids):
-
         station_name = station_names[j]
         sta_name = station_to_filename(station_name)
-        n,m = station_locs[j]
+        m,n = station_locs[j]
 
         print("Prepare to extract data from NOAA database ..........\n")
 
+        """
         # Note! The default interval is 6 minute interval and there is no need to specify it.
         # The hourly interval is supported for Met data and Harmonic Predictions data only
         # url can not accept space in it (i.e. end_date + something vs. 'end_date  something'
@@ -407,32 +399,50 @@ def process_data(station_ids, station_names, station_locs, mode, start_date_idx,
         data = content.decode('UTF-8')
         lines = data.split("\n")
         df = pd.DataFrame(lines)
+        """
+        # station_ids = (8536110, 8557380, 8537121, 8551910, 8555889)
+        # station_names = ["Cape May, NJ", "Lewes, DE", "Ship John Shoal, NJ", "Reedy Point, DE","Brandywine Shoal Light, DE"]
+        # station_locs = [(717,464), (572,258), (340,838), (160,1120), (578,485)]
+        # Cape May: FID:464717   Reedy Point: FID:1120160   Ship John shoal:FID:838340    Lewes: FID:258572    Shoal Brandywine:FID:485578
+
+        files = ["CO-OPS__8536110__wl.csv", "CO-OPS__8557380__wl.csv", "CO-OPS__8537121__wl.csv", "CO-OPS__8551910__wl.csv", "CO-OPS__8555889__wl.csv"]
+
+        df = pd.read_csv(files[j], usecols=['Date Time',' Water Level'], index_col = ['Date Time'], parse_dates=['Date Time'])
         
-        #df = pd.read_csv('coops.dat')
-        print(df.columns)
-
-        # drop extra columns Date Time, Water Level
-        data = df.drop([' Sigma', ' O or I (for verified)', ' F', ' R', ' L', ' Quality '], axis=1)
-        print(len(data))
-
+        # Test plot
+        plot_name = str(sid) + ".pdf"
+        with PdfPages(plot_name) as pdf:
+          fig, ax = plt.subplots(figsize=(22, 12))
+          ax = df.plot( marker='.', markersize=0, linestyle='-', linewidth=0.5, color="C3", label='Observed')
+          ax.legend()
+          ax.set_title(station_name)
+          ax.set_ylabel('Water Level')
+          ax.set_xlabel('Date')
+          
+          pdf.savefig()
+          plt.close()
+       
+  
         # extract water level data, per station from ncfile
-        print("Extracting water level '{}' for station id {} located at '{},{}' grid\n".format(ncvar,sid,m,n))
+        print("Extracting water level '{}' for station id '{}' located at '{},{}' grid\n".format(ncvar,sid,m,n))
 
         # n,m is the grid location (col,row) of the station
-        #n = 1000, m = 2167
+        # m = 1000, n = 2167    - test 578,485
         wl = dbaync_fptr.variables[ncvar][start_date_idx:end_date_idx, int(m), int(n)]
-        print(len(wl))
+        sz = min(df.shape[0],len(wl))
+        data = df[:sz].round(decimals=4)
         col = ncvar.upper()
-        data.insert(2, column=col, value=wl)
-        print(data.head(5))
-        print(data.columns)
-        
-        data = data.astype({'Date Time': np.datetime64, str(col):np.float64, ' Water Level': np.float64})   # space in Wate Level is needed
-        data = data.set_index('Date Time')
-        
+        value = wl[:sz].round(decimals=4)
+        data.insert(1, column=col, value=value)        
+        # print(data.head(5))
+        # print(data.columns)
+
+        outfile = "sfincs_" + str(sid) + ".out"
+        data.to_csv(outfile, index = True, header=True, sep='\t')
+         
         # save this station with its data globally
         data_dict[sta_name] = data
-
+    
     return data_dict
 
 
@@ -447,6 +457,7 @@ def main():
     end_storm_idx   = kwarg["storm_eidx"]
     start_storm     = kwarg["storm_sdate"]
     end_storm       = kwarg["storm_edate"]
+    print(start_storm,start_storm_idx,end_storm,end_storm_idx)
 
     # if space, substitutes with "_" for the file name and capitalize as is for the
     # title
@@ -455,13 +466,13 @@ def main():
         ms = model.replace(" ", "_")
 
     plt_title = plt_subtitle = None
-    
 
     # Note: we can not use ncfile station names to extract data from NOAA due to station_ids requirement for extraction.
     # stations with same attributes in NOAA database - these stations all have same datum (NVAD)
     station_ids = (8536110, 8557380, 8537121, 8551910, 8555889)
     station_names = ["Cape May, NJ", "Lewes, DE", "Ship John Shoal, NJ","Reedy Point, DE","Brandywine Shoal Light, DE"]
     station_locs = [(717,464), (572,258), (340,838), (160,1120), (578,485)]
+    #files = ["CO-OPS__8536110__wl.csv", "CO-OPS__8557380__wl.csv", "CO-OPS__8537121__wl.csv", "CO-OPS__8551910__wl.csv", "CO-OPS__8555889__wl.csv"]
 
     data_dict = {}  # holds processed data for all modes, if we need to plot them in one figure
     outfile_dict = {}
@@ -494,70 +505,6 @@ def main():
             # plot
             print("\tPlotting stations_data to file ...............\n")
             tsplot(hurricane_name, stations_data, outfile_name, plt_title, plt_subtitle, "Water Level (m)")
-
-    sys.exit(0)
-
-    # different set of stations with same attributes in NOAA database - these stations all have same datum (MSL)
-    # station_ids = (8555889, 8537121, 8540433, 8539094, 8548989)
-    # station_names = ["Brandywine Shoal Light, DE", "Ship John Shoal, NJ", "Marcus Hook, PA",
-    #                "Burlington, Delaware River, NJ", "Newbold, PA"]
-    station_ids = (8539094,)
-    station_names = ["Burlington, Delaware River, NJ",]
-
-    data_dict = {}  # holds processed data for all modes, if we need to plot them in one figure
-    outfile_dict = {}
-
-    # at most expected space delimited "modelname type scenario" or what ever name
-    # if space, substitutes with "_" for the file name and capitalize as is for the
-    # title
-    ms = model_scenario
-    if ' ' in model_scenario:
-        ms = model_scenario.replace("_", " ")
-
-    major_title = model_scenario + " - Hurricane " + hurricane_name.capitalize() + " - Station "
-    outfile_ext = ".csv"
-
-    modes = ["predictions", "water_level"]  # these are pre-defined keyword set in NOAA database. Do not change
-
-    for mode in modes:
-        print("\nProcessing data for %s ...............\n" % mode)
-        if mode == "predictions":
-            if start_spin_idx == -2 or end_spin_idx == -2:
-                continue
-            title = "Date_Time\t\t\t\tSpinup\t\tDateTime\t\t\tD-Flow"
-            outfile_name = os.path.join(out_dir, ms.lower() + "_" + hurricane_name + "_spinup_")
-            outfile_dict[mode] = outfile_name
-            plt_title = "Tide prediction comparison with NOAA observed data during spin-up for hurricane %s\n" % hurricane_name.capitalize()
-            plt_subtitle = model_scenario
-
-            # process data from tide and from model water level, return numpy array for further processing
-            # By default extracts tide data in csv format. To customize pass the outfile_ext.
-            stations_data = process_data(station_ids, station_names, mode, start_spin_idx, end_spin_idx, start_spin,
-                                         end_spin, "msl")
-            data_dict[mode] = stations_data
-
-        elif mode == "water_level":
-            if start_storm_idx == -2 or end_storm_idx == -2:
-                continue
-
-            title = "Date_Time\t\t\t\tStorm\t\tDateTime\t\t\tD-Flow"
-            outfile_name = os.path.join(out_dir, ms.lower() + "_" + hurricane_name + "_storm_")
-            outfile_dict[mode] = outfile_name
-            plt_title = "Water level (m) prediction comparison with NOAA observed data during hurricane %s\n" % hurricane_name.capitalize()
-            plt_subtitle = model_scenario
-            stations_data = process_data(station_ids, station_names, station_locs, mode, start_storm_idx, end_storm_idx, start_storm,
-                                         end_storm, "msl", ncvar)
-            data_dict[mode] = stations_data
-
-            # check for stations_data if empty, skip from here on!
-        if len(stations_data):
-            # write data to file -
-            print("\tWriting stations_data to file ...............\n")
-            #write_data_tofile(stations_data, major_title, title, outfile_name, outfile_ext)
-
-            # plot
-            print("\tPlotting stations_data to file ...............\n")
-            #plot_dflow(hurricane_name, stations_data, outfile_name, plt_title, plt_subtitle)
 
 
 
